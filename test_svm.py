@@ -25,7 +25,7 @@ import joblib
 from skimage.io import imread
 from skimage.transform import resize
 import pickle
- 
+
 def resize_all(src, pklname, include, width=150, height=None):
     """
     load images from path, resize them and write them as arrays to a dictionary, 
@@ -136,70 +136,24 @@ hogify = HogTransformer(
 )
 scalify = StandardScaler()
 
-width = 180
-isTraining = True
+width = 120
 isHog = True
 
-save_dir = "./svm_training_results/"
-load_dir = save_dir
+load_dir = "./svm_trained_models/hog_120/"
 
-if isTraining:
-
-    print("Training Data is being loaded!")
-    data_path = './Dataset/Train-dev/'
-    base_name = './Dataset/Train-dev/'
-    include = {'Izmir', 'Metu_blue', 'Metu_red'}
-    data = resize_all(src=data_path, pklname=base_name, width=width, include=include)
-
-    from collections import Counter
-    print('number of samples: ', len(data['data']))
-    print('keys: ', list(data.keys()))
-    print('description: ', data['description'])
-    print('image shape: ', data['data'][0].shape)
-    print('labels:', np.unique(data['label']))
-    Counter(data['label'])
-    X_train = np.array(data['data'])
-    Y_train = np.array(data['label'])
-    if isHog:
-        X_train = grayify.fit_transform(X_train)
-        X_train = hogify.fit_transform(X_train)
-        X_train = scalify.fit_transform(X_train)
-    else:
-        X_train = scalify.fit_transform(X_train.reshape(len(data['data']), -1)).reshape(X_train.shape)
-    print("Training Data is loaded!\n")
-
-    print("Training Started!")
-    sgd_clf = SGDClassifier(random_state=109, max_iter=1000, tol=1e-3)
-    if isHog:
-        sgd_clf.fit(X_train, Y_train)
-    else:
-        sgd_clf.fit(X_train.reshape(X_train.shape[0], -1), Y_train)
-    print("Training Finished!\n")
-
-    if isHog:
-        joblib.dump(sgd_clf, save_dir + "svm_model.joblib")
-        joblib.dump(grayify, save_dir + "grayify.joblib")
-        joblib.dump(hogify, save_dir + "hogify.joblib")
-        joblib.dump(scalify, save_dir + "scalify.joblib")
-    else:
-        joblib.dump(sgd_clf, save_dir + "svm_model_noHog.joblib")
-        joblib.dump(scalify, save_dir + "scalify_noHog.joblib")
-
-    print("SVM Model and transformers are saved to disk!\n")
+if isHog:
+    sgd_clf = joblib.load(load_dir + "svm_model.joblib")
+    grayify = joblib.load(load_dir + "grayify.joblib")
+    hogify = joblib.load(load_dir + "hogify.joblib")
+    scalify = joblib.load(load_dir + "scalify.joblib")
 else:
-    if isHog:
-        sgd_clf = joblib.load(load_dir + "svm_model.joblib")
-        grayify = joblib.load(load_dir + "grayify.joblib")
-        hogify = joblib.load(load_dir + "hogify.joblib")
-        scalify = joblib.load(load_dir + "scalify.joblib")
-    else:
-        sgd_clf = joblib.load(load_dir + "svm_model_noHog.joblib")
-        scalify = joblib.load(load_dir + "scalify_noHog.joblib")
-    print("SVM Model loaded from the disk!\n")
+    sgd_clf = joblib.load(load_dir + "svm_model_noHog.joblib")
+    scalify = joblib.load(load_dir + "scalify_noHog.joblib")
+print("SVM Model loaded from the disk!\n")
 
-print("Validation Data is being loaded!")
-data_path = './Dataset/Validation/'
-base_name = './Dataset/Validation/'
+print("Test Data is being loaded!")
+data_path = './Dataset/Test2/'
+base_name = './Dataset/Test2/'
 include = {'Izmir', 'Metu_blue', 'Metu_red'}
 data = resize_all(src=data_path, pklname=base_name, width=width, include=include)
 
@@ -217,7 +171,7 @@ if isHog:
     X_val = scalify.transform(X_val)
 else:
     X_val = scalify.transform(X_val.reshape(len(data['data']), -1)).reshape(X_val.shape)
-print("Validation Data is loaded!\n")
+print("Test Data is loaded!\n")
 
 print("Prediction started!")
 
@@ -234,3 +188,8 @@ print("Classification report for - \n{}:\n{}\n".format(
 
 print('')
 print('Accuracy: {0}%'.format(100*np.sum(y_pred_sgd == Y_val)/len(Y_val)))
+
+for i, y_pred in enumerate(y_pred_sgd):
+    if y_pred != Y_val[i]:
+        print(data["filename"][i])
+        print("Prediction: " + y_pred + "\t GT: " + Y_val[i])

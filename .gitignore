@@ -1,5 +1,7 @@
 .vscode
 Dataset
 lr*
-train_logs/
+training_results/
+svm_trained_models/
+*.rar
 *.joblib

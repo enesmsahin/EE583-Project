@@ -8,9 +8,10 @@ from torch import nn
 import matplotlib.pyplot as plt
 import random
 from torch.utils.tensorboard import SummaryWriter
+import joblib
 
 # default `log_dir` is "runs" - we'll be more specific here
-writer = SummaryWriter('./train_logs/')
+writer = SummaryWriter('./training_results/')
 
 def normalization_parameter(dataloader):
     mean = 0.
@@ -27,57 +28,39 @@ def normalization_parameter(dataloader):
 
 batch_size = 16
 
-train_transforms = transforms.Compose([transforms.ToTensor(),
-                                        transforms.Resize((224,224))])
+getTrainMeanStd = True
 
-# Load data to calculate mean and std dev
-train_data = torchvision.datasets.ImageFolder("D:/OKUL/6_1/EE583/PROJECT/Dataset/Train-dev", transform=train_transforms)
-train_loader = DataLoader(dataset=train_data, batch_size=64, shuffle=True)
-mean,std = normalization_parameter(train_loader)
+if getTrainMeanStd:
+    train_transforms = transforms.Compose([transforms.ToTensor(),
+                                            transforms.Resize((224,224))])
+
+    # Load data to calculate mean and std dev
+    train_data = torchvision.datasets.ImageFolder("./Dataset/Train-dev", transform=train_transforms)
+    train_loader = DataLoader(dataset=train_data, batch_size=64, shuffle=True)
+    mean,std = normalization_parameter(train_loader)
+
+    print("Saving mean and std of training data to the disk!\n")
+    joblib.dump(mean, "./Dataset/Train-dev/mean.joblib")
+    joblib.dump(std, "./Dataset/Train-dev/std.joblib")
+else:
+    print("Loading mean and std of training data from the disk!\n")
+    mean = joblib.load("./Dataset/Train-dev/mean.joblib")
+    std = joblib.load("./Dataset/Train-dev/std.joblib")
 
 # Load data again by also normalizing it
 train_transforms = transforms.Compose([transforms.ToTensor(),
                                         transforms.Resize((224,224)),
                                         transforms.Normalize(mean, std)])
-train_data = torchvision.datasets.ImageFolder("D:/OKUL/6_1/EE583/PROJECT/Dataset/Train-dev", transform=train_transforms)
+train_data = torchvision.datasets.ImageFolder("./Dataset/Train-dev", transform=train_transforms)
 train_loader = DataLoader(dataset=train_data, batch_size=batch_size, shuffle=True)
 
-val_data = torchvision.datasets.ImageFolder("D:/OKUL/6_1/EE583/PROJECT/Dataset/Validation", transform=train_transforms)
+val_data = torchvision.datasets.ImageFolder("./Dataset/Validation", transform=train_transforms)
 valid_loader = DataLoader(dataset=val_data, batch_size=batch_size, shuffle=True)
 
 inv_normalize =  transforms.Normalize(
     mean=-1*np.divide(mean,std),
     std=1/std
 )
-
-classes = train_data.classes
-#encoder and decoder to convert classes into integer
-decoder = {}
-for i in range(len(classes)):
-    decoder[classes[i]] = i
-encoder = {}
-for i in range(len(classes)):
-    encoder[i] = classes[i]
-
-#plotting rondom images from dataset
-# def class_plot(data , encoder ,inv_normalize = None,n_figures = 12):
-#     n_row = int(n_figures/4)
-#     fig,axes = plt.subplots(figsize=(14, 10), nrows = n_row, ncols=4)
-#     for ax in axes.flatten():
-#         a = random.randint(0,len(data))
-#         (image,label) = data[a]
-#         print(type(image))
-#         label = int(label)
-#         l = encoder[label]
-#         if(inv_normalize!=None):
-#             image = inv_normalize(image)
-        
-#         image = image.numpy().transpose(1,2,0)
-#         im = ax.imshow(image)
-#         ax.set_title(l)
-#         ax.axis('off')
-#     plt.show()
-# class_plot(train_data,encoder, inv_normalize)
 
 model = EfficientNet.from_pretrained('efficientnet-b0', num_classes=3)
 
@@ -87,11 +70,9 @@ model.to(device)
 
 criterion = torch.nn.CrossEntropyLoss()
 
-learning_rate = 0.001
+learning_rate = 0.0005
 # optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-
-model.train()
 
 num_epochs = 50
 
@@ -102,6 +83,8 @@ val_accs = []
 
 for epoch in range(num_epochs):
     print("Epoch: ", epoch)
+
+    model.train()
 
     running_loss = 0.0
     running_corrects = 0
@@ -116,7 +99,7 @@ for epoch in range(num_epochs):
         loss.backward()
         optimizer.step()
 
-        acc = torch.sum(torch.argmax(outputs,1) == labels) / batch_size
+        acc = torch.sum(torch.argmax(outputs,1) == labels) / outputs.shape[0]
         running_corrects = running_corrects + acc
         train_losses.append(loss.item())
         train_accs.append(acc)
@@ -134,6 +117,8 @@ for epoch in range(num_epochs):
             running_corrects = 0
             iterator = 0
 
+    model.eval()
+
     total_val_loss = 0.0
     total_val_accs = 0
     for batch_idx, (inputs, labels) in enumerate(valid_loader):
@@ -143,7 +128,7 @@ for epoch in range(num_epochs):
         outputs = model(inputs)
         loss = criterion(outputs, labels)
         val_losses.append(loss.item())
-        val_acc = torch.sum(torch.argmax(outputs, 1) == labels) / batch_size
+        val_acc = torch.sum(torch.argmax(outputs, 1) == labels) / outputs.shape[0]
         total_val_loss += loss.item()
         total_val_accs += val_acc
 
@@ -156,5 +141,5 @@ for epoch in range(num_epochs):
     writer.add_scalar('validation_loss', val_losses[-1], epoch)
     writer.add_scalar('validation_accuracy', val_accs[-1], epoch)
 
-    torch.save(model.state_dict(), "./checkpoint_epoch" + str(epoch) + ".pt")
+    torch.save(model.state_dict(), "./training_results/checkpoint_epoch" + str(epoch) + ".pt")
     print("Checkpoint for Epoch " + str(epoch) + " saved")
